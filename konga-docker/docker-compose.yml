@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # Kong用のPostgreSQLデータベース
+  kong-database:
+    image: postgres:14
+    container_name: kong-database
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kongpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kongのデータベースマイグレーション
+  kong-migration:
+    image: kong:3.5
+    container_name: kong-migration
+    platform: linux/arm64
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+      KONG_PG_DATABASE: kong
+    networks:
+      - kong-net
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: on-failure
+
+  # Kong Gateway本体
+  kong:
+    image: kong:3.5
+    container_name: kong-gateway
+    platform: linux/arm64
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+      KONG_PG_DATABASE: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      # Kong Manager OSSは無効化（Kongaを使用するため）
+      # KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+    ports:
+      - "8000:8000"  # プロキシポート(HTTPリクエスト受付)
+      - "8443:8443"  # プロキシポート(HTTPS)
+      - "8001:8001"  # Admin API
+      - "8444:8444"  # Admin API(HTTPS)
+    networks:
+      - kong-net
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # Konga用のPostgreSQLデータベース
+  konga-database:
+    image: postgres:14
+    container_name: konga-database
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: konga
+      POSTGRES_DB: konga
+      POSTGRES_PASSWORD: kongapass
+    ports:
+      - "5434:5432"
+    volumes:
+      - konga_data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U konga"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kongaの初期化
+  konga-prepare:
+    image: pantsel/konga
+    container_name: konga-prepare
+    platform: linux/amd64
+    command: "-c prepare -a postgres -u postgresql://konga:kongapass@konga-database:5432/konga"
+    networks:
+      - kong-net
+    depends_on:
+      konga-database:
+        condition: service_healthy
+    restart: on-failure
+
+  # Konga管理GUI（認証付き）
+  konga:
+    image: pantsel/konga
+    container_name: konga
+    platform: linux/amd64
+    environment:
+      DB_ADAPTER: postgres
+      DB_HOST: konga-database
+      DB_PORT: 5432
+      DB_USER: konga
+      DB_PASSWORD: kongapass
+      DB_DATABASE: konga
+      NODE_ENV: production
+      # セキュリティ設定
+      TOKEN_SECRET: "your-secret-token-change-this-in-production"
+      # セッションタイムアウト（秒）
+      SESSION_TIMEOUT: 3600
+    ports:
+      - "1337:1337"  # Konga Web UI
+    networks:
+      - kong-net
+    depends_on:
+      konga-database:
+        condition: service_healthy
+      konga-prepare:
+        condition: service_completed_successfully
+      kong:
+        condition: service_healthy
+    restart: always
+
+networks:
+  kong-net:
+    driver: bridge
+
+volumes:
+  kong_data:
+  konga_data:
