@@ -1,4 +1,4 @@
-Kong + Konga ローカル開発環境のREADMEを作成します。
+Kong + Konga ローカル開発環境のREADME
 
 ```markdown
 # Kong Gateway + Konga ローカル開発環境
