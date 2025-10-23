@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Kong用のPostgreSQLデータベース
   kong-database:
     image: postgres:14
     container_name: kong-database
@@ -10,7 +9,7 @@ services:
       POSTGRES_DB: kong
       POSTGRES_PASSWORD: kongpass
     ports:
-      - "5433:5432"  # ホスト側を5433に変更
+      - "5433:5432"
     volumes:
       - kong_data:/var/lib/postgresql/data
     networks:
@@ -21,7 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Kongのデータベースマイグレーション
   kong-migration:
     image: kong:3.5
     container_name: kong-migration
@@ -39,7 +37,6 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # Kong Gateway本体
   kong:
     image: kong:3.5
     container_name: kong-gateway
@@ -54,12 +51,15 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      # Kong Manager OSS を有効化
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
       KONG_ADMIN_GUI_URL: http://localhost:8002
     ports:
-      - "8000:8000"  # プロキシポート(HTTPリクエスト受付)
-      - "8443:8443"  # プロキシポート(HTTPS)
-      - "8001:8001"  # Admin API
-      - "8444:8444"  # Admin API(HTTPS)
+      - "8000:8000"
+      - "8443:8443"
+      - "8001:8001"
+      - "8444:8444"
+      - "8002:8002"  # Kong Manager GUI
     networks:
       - kong-net
     depends_on:
@@ -73,67 +73,9 @@ services:
       timeout: 10s
       retries: 10
 
-  # Konga用のPostgreSQLデータベース
-  konga-database:
-    image: postgres:14
-    container_name: konga-database
-    environment:
-      POSTGRES_USER: konga
-      POSTGRES_DB: konga
-      POSTGRES_PASSWORD: kongapass
-    ports:
-      - "5434:5432"  # ホスト側を5434に変更
-    volumes:
-      - konga_data:/var/lib/postgresql/data
-    networks:
-      - kong-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U konga"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Kongaの初期化
-  konga-prepare:
-    image: pantsel/konga
-    container_name: konga-prepare
-    command: "-c prepare -a postgres -u postgresql://konga:kongapass@konga-database:5432/konga"
-    networks:
-      - kong-net
-    depends_on:
-      konga-database:
-        condition: service_healthy
-    restart: on-failure
-
-  # Konga管理GUI
-  konga:
-    image: pantsel/konga
-    container_name: konga
-    environment:
-      DB_ADAPTER: postgres
-      DB_HOST: konga-database
-      DB_PORT: 5432
-      DB_USER: konga
-      DB_PASSWORD: kongapass
-      DB_DATABASE: konga
-      NODE_ENV: production
-    ports:
-      - "1337:1337"  # Konga Web UI
-    networks:
-      - kong-net
-    depends_on:
-      konga-database:
-        condition: service_healthy
-      konga-prepare:
-        condition: service_completed_successfully
-      kong:
-        condition: service_healthy
-    restart: always
-
 networks:
   kong-net:
     driver: bridge
 
 volumes:
   kong_data:
-  konga_data:
