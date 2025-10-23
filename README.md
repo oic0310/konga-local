@@ -1,6 +1,3 @@
-Kong + Konga ローカル開発環境のREADME
-
-```markdown
 # Kong Gateway + Konga ローカル開発環境
 
 このリポジトリは、Kong Gateway と Konga 管理UIをDocker Composeで構築するローカル開発環境です。
@@ -621,6 +618,3 @@ environment:
 ---
 
 **最終更新**: 2025年10月23日
-```
-
-このREADMEをプロジェクトのルートディレクトリに`README.md`として保存してください。必要に応じてプロジェクト固有の情報を追加・修正してください！
